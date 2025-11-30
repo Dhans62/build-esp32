@@ -1,0 +1,56 @@
+name: Build ESP32 Firmware
+
+on:
+  push:
+    branches:
+      - input
+  workflow_dispatch:
+    inputs:
+      board:
+        description: "Board type (optional)"
+        required: false
+        default: "esp32:esp32:esp32dev"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+          sudo mv bin/arduino-cli /usr/local/bin/
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.3
+
+      - name: Determine Board Type
+        id: board
+        run: |
+          if [ -f input/board.txt ]; then
+            BOARD=$(cat input/board.txt)
+          else
+            BOARD="${{ github.event.inputs.board }}"
+          fi
+          echo "BOARD=$BOARD" >> $GITHUB_ENV
+
+      - name: Compile Sketch
+        run: |
+          FILE=$(ls input/*.ino | head -n 1)
+          echo "Compiling $FILE"
+          arduino-cli compile --fqbn "$BOARD" --output-dir build "$FILE"
+
+      - name: Package Firmware
+        run: |
+          zip -j firmware.zip build/*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: firmware.zip
+          
